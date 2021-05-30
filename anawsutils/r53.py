@@ -6,6 +6,7 @@ import boto3
 class Route53(object):
   def __init__(self):
     self.client = boto3.client("route53")
+    self.hostedzones = {}
 
 
   @staticmethod
@@ -23,13 +24,19 @@ class Route53(object):
     return r
 
 
-  def get_hosted_zone_id_by_domain(self, domain_name):
-    r = self.list_hosted_zones_by_name(domain_name)
-
-    hzid = None
+  def get_hosted_zone_id_by_domain(self, domain_name, cache=True):
     _dn = self._ensure_trailing_dot(domain_name)
 
+    if cache is True and _dn in self.hostedzones:
+      return self.hostedzones[_dn]
+
+    r = self.list_hosted_zones_by_name(_dn)
+
+    hzid = None
+
     for z in r["HostedZones"]:
+      if cache is True and z["Name"] not in self.hostedzones:
+        self.hostedzones[z["Name"]] = z["Id"]
       if z["Name"] == _dn:
         hzid = z["Id"]
         break
@@ -54,7 +61,7 @@ class Route53(object):
             'Action': action,
             'ResourceRecordSet': {
               'Name': _fqdn,
-              'Type': record_type,
+              'Type': record_type.upper(),
               'TTL':  ttl,
               'ResourceRecords': [{ 'Value': _value }],
             }
@@ -93,3 +100,19 @@ class Route53(object):
       time.sleep(check_interval)
 
     return change_finished_ok
+
+
+  def get_resource_record(self, hostedzoneid, fqdn, record_type):
+    _fqdn = self._ensure_trailing_dot(fqdn)
+
+    r = self.client.list_resource_record_sets(
+      HostedZoneId=hostedzoneid,
+      StartRecordName=_fqdn,
+      StartRecordType=record_type.upper(),
+      MaxItems="1"
+    )
+
+    if r["ResourceRecordSets"][0]["Name"] == _fqdn and r["ResourceRecordSets"][0]["Type"] == record_type.upper():
+      return r["ResourceRecordSets"][0]
+    else:
+      return None
