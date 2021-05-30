@@ -8,6 +8,16 @@ class Route53(object):
     self.client = boto3.client("route53")
 
 
+  @staticmethod
+  def _ensure_trailing_dot(s):
+    if s is None or not isinstance(s, str) or len(s) < 1:
+      raise ValueError("Invalid domain name")
+    elif s[-1] == '.':
+      return s
+    else:
+      return s + '.'    
+
+
   def list_hosted_zones_by_name(self, domain_name):
     r = self.client.list_hosted_zones_by_name(DNSName=domain_name)
     return r
@@ -17,14 +27,9 @@ class Route53(object):
     r = self.list_hosted_zones_by_name(domain_name)
 
     hzid = None
-
-    if domain_name[-1] == '.':
-      _dn = domain_name
-    else:
-      _dn = domain_name + '.'
+    _dn = self._ensure_trailing_dot(domain_name)
 
     for z in r["HostedZones"]:
-      print(z["Name"], _dn)
       if z["Name"] == _dn:
         hzid = z["Id"]
         break
@@ -32,35 +37,45 @@ class Route53(object):
     return hzid
 
 
-  def update_resource_record(self, hostedzoneid, fqdn, record_type, ttl, value, comment):
+  def _modify_resource_record(self, action, hostedzoneid, fqdn, record_type, ttl, value, comment):
     if hostedzoneid is None:
       raise ValueError("HostedZoneId is none")
 
-    if fqdn[-1] == '.':
-      _fqdn = fqdn
-    else:
-      _fqdn = fqdn + '.'
+    _fqdn = self._ensure_trailing_dot(fqdn)
 
     if record_type == "TXT":
       _value = '"{}"'.format(value)
     else:
       _value = value
 
+    changebatch = {
+          'Comment': comment,
+          'Changes': [ {
+            'Action': action,
+            'ResourceRecordSet': {
+              'Name': _fqdn,
+              'Type': record_type,
+              'TTL':  ttl,
+              'ResourceRecords': [{ 'Value': _value }],
+            }
+          }]
+    }
+
     r = self.client.change_resource_record_sets(
-      HostedZoneId=hzid,
-      ChangeBatch={
-        'Comment': comment,
-        'Changes': [ {
-          'Action': 'UPSERT',
-          'ResourceRecordSet': {
-            'Name': _fqdn,
-            'Type': record_type,
-            'TTL':  ttl,
-            'ResourceRecords': [{ 'Value': _value }],
-          }
-        }]
-      }
+      HostedZoneId=hostedzoneid,
+      ChangeBatch=changebatch
     )
+
+    return r
+
+
+  def update_resource_record(self, hostedzoneid, fqdn, record_type, ttl, value, comment):  
+    r = self._modify_resource_record('UPSERT', hostedzoneid, fqdn, record_type, ttl, value, comment)
+    return r["ChangeInfo"]["Id"]
+
+
+  def delete_resource_record(self, hostedzoneid, fqdn, record_type, ttl, value, comment):
+    r = self._modify_resource_record('DELETE', hostedzoneid, fqdn, record_type, ttl, value, comment)
     return r["ChangeInfo"]["Id"]
 
 
