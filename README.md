@@ -1,6 +1,6 @@
 # anawsutils
 
-A python3 module with micallaneous AWS utils.
+A python3 module with miscallaneous AWS utils.
 
 ## Install
 
