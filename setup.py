@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
   name="anawsutils",
-  version="0.1.3",
+  version="0.1.4",
   author="anttin",
   author_email="muut.py@antion.fi",
   description="Module with miscallaneous AWS utils.",
